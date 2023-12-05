@@ -30,10 +30,26 @@ void checkFileExists(String filename) {
 int main(int argc, char** argv)
 {
 	String filename = "..\\IulianData\\Iulian_Headshot.jpg";
-	checkFileExists(filename);
+	//checkFileExists(filename);
 
-	// Read the image file
-	Mat image = imread(filename);
+
+
+	const cv::Mat input = cv::imread(filename, 0); //Load as grayscale
+
+	// detect keypoints in image using the feature detector
+	std::vector<cv::KeyPoint> keypoints;
+	cv::OrbFeatureDetector detector;
+	detector.detect(input, keypoints);
+
+	// Add results to image and save.
+	cv::Mat output;
+	cv::drawKeypoints(input, keypoints, output, cv::Scalar::all(-1), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+
+
+
+
+	////////// Display the image
+	Mat image = output; //imread(filename);
 
 	if (image.empty()) // Check for failure
 	{
