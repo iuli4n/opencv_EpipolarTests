@@ -16,7 +16,7 @@ void checkFileExists(String filename) {
 	infile.open(filename, ios::in);
 	if (infile.fail())
 	{
-		cout << "ERROR. Failed to open file.\n";
+		cout << "ERROR. Failed to open image file.\n";
 		return;
 	}
 	else {
@@ -29,7 +29,7 @@ void checkFileExists(String filename) {
 
 int main(int argc, char** argv)
 {
-	String filename = "..\\IulianData\\Iulian_Headshot.jpg";
+	String filename = "..\\..\\_RawImages\\box.png";
 	checkFileExists(filename);
 
 	// Read the image file
