@@ -163,7 +163,20 @@ int main__images(int argc, char** argv)
 *****/
 
 
+void train_drawArea(Mat frame, Rect trainingArea, Scalar color) {
+	
+	cv::rectangle(frame, trainingArea, color);
+}
 
+void processNewTrainingImage(Mat img1, Ptr<SIFT>& siftdetector, std::vector<cv::KeyPoint>& keypoints1, Mat& descriptors1, std::vector<Point2f>& obj_corners) {
+	keypoints1.clear();
+	siftdetector->detectAndCompute(img1, noArray(), keypoints1, descriptors1);
+	obj_corners.clear();
+	obj_corners[0] = Point2f(0, 0);
+	obj_corners[1] = Point2f((float)img1.cols, 0);
+	obj_corners[2] = Point2f((float)img1.cols, (float)img1.rows);
+	obj_corners[3] = Point2f(0, (float)img1.rows);
+}
 
 int main(int, char**)
 {
@@ -183,13 +196,13 @@ int main(int, char**)
 
 	String filename1 = "..\\..\\_RawImages\\box.png";
 
-	const cv::Mat img1 = cv::imread(filename1, cv::IMREAD_GRAYSCALE); //Load as grayscale
+	cv::Mat img1 = cv::imread(filename1, cv::IMREAD_GRAYSCALE); //Load as grayscale
 	assert(!img1.empty());
 
 	Ptr<SIFT> siftdetector = SIFT::create();
 	std::vector<cv::KeyPoint> keypoints1;
 	cv::Mat descriptors1;
-	siftdetector->detectAndCompute(img1, noArray(), keypoints1, descriptors1);
+	
 
 
 
@@ -224,11 +237,6 @@ int main(int, char**)
 	Mat img_matches;
 
 	std::vector<Point2f> obj_corners(4);
-	obj_corners[0] = Point2f(0, 0);
-	obj_corners[1] = Point2f((float)img1.cols, 0);
-	obj_corners[2] = Point2f((float)img1.cols, (float)img1.rows);
-	obj_corners[3] = Point2f(0, (float)img1.rows);
-
 
 	Mat H;
 	std::vector<Point2f> scene_corners(4);
@@ -249,16 +257,24 @@ int main(int, char**)
 		sps[i] = Point3f(sps[i].x *-1, sps[i].y * 1, sps[i].z * -1  + 1);
 	}
 
+	Rect trainingArea;
+	{
+		int pad = 50, width = 300, height = 300;
+		int x1 = pad, x2 = pad + width;
+		int y1 = pad, y2 = pad + height;
+		trainingArea = Rect(x1, y1, x2, y2);
+	}
+	processNewTrainingImage(img1, siftdetector, keypoints1, descriptors1, obj_corners);
+
+	bool gui_showArea = false;
+	bool gui_showFeatures = false;
+
 	//--- GRAB AND WRITE LOOP
 	cout << "Start grabbing" << endl
 		<< "Press any key to terminate" << endl;
 	for (;;)
 	{
 		
-
-
-		if (waitKey(1) >= 0)
-			return 0;
 
 		// wait for a new frame from camera and store it into 'frame'
 		cap.read(frame);
@@ -267,8 +283,32 @@ int main(int, char**)
 			cerr << "ERROR! blank frame grabbed\n";
 			break;
 		}
+
+
+
+		char c = (char)waitKey(1);
+
+		if (c == '1') {
+			gui_showArea = !gui_showArea;
+		}
+		if (gui_showArea) train_drawArea(frame, trainingArea, Scalar(0, 255, 0));;
+
+		if (c == ' ') {
+			// train new dataset
+			train_drawArea(frame, trainingArea, Scalar(255, 0, 0));
+
+			Mat ni = frame(trainingArea);
+			cvtColor(ni, img1, COLOR_RGB2GRAY);
+			
+			processNewTrainingImage(img1, siftdetector, keypoints1, descriptors1, obj_corners);
+
+		}
+
+
+
+
 		// show live and wait for a key with timeout long enough to show images
-		///imshow("Live", frame);
+		imshow("Live", frame);
 
 		// 
 		// ===== DETECT FEATURES ======= using SIFT
@@ -307,7 +347,7 @@ int main(int, char**)
 
 
 			// SHOW matches
-			if (true) {
+			if (gui_showFeatures) {
 				drawMatches(frame, keypoints2,
 					img1, keypoints1,
 					topMatches,
@@ -322,7 +362,8 @@ int main(int, char**)
 			}
 
 
-			if (scenePoints.size() < 4) continue;
+			const int MINPOINTS = 20;
+			if (scenePoints.size() < MINPOINTS) continue;
 
 			/***
 			
