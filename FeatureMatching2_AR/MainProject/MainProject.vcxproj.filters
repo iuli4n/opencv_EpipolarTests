@@ -23,6 +23,9 @@
     <Text Include="misc.hpp">
       <Filter>Source Files</Filter>
     </Text>
+    <Text Include="main_old.cpp.txt">
+      <Filter>Source Files</Filter>
+    </Text>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="main.h">

@@ -149,6 +149,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <Text Include="main_old.cpp.txt" />
     <Text Include="misc.hpp">
       <FileType>CppHeader</FileType>
     </Text>

@@ -11,8 +11,12 @@ The way it works :
 	-- DRAW: draws a 3d cube by projecting from object space to camera space
 
 - if you want a new tracking image, you can train it from what the camera sees: 
-  Push 1 to see the area of the camera that will be scanned, and then 
-  Push SPACE to use that area as the tracking image
+	Push 1 to see the area of the camera that will be scanned, and then 
+	Push SPACE to use that area as the tracking image
+
+- debugging:
+	Push 2 to see all the features detected in the camera image
+	Push 3 to see what features are matched between the camera and the training image
 
 Author: Iulian Radu 2024
 
@@ -103,7 +107,7 @@ int main(int, char**)
 	cv::Mat cam_distortioncoefficients;
 	fs["distortion_coefficients"] >> cam_distortioncoefficients;
 
-	cout << cam_cameramatrix;
+	//cout << cam_cameramatrix;
 	fs.release();
 
 	// OPEN LIVE CAMERA 
@@ -113,7 +117,7 @@ int main(int, char**)
 	// cap.open(0);
 	// OR advance usage: select any API backend
 	int deviceID = 0;             // 0 = open default camera
-	int apiID = cv::CAP_ANY;      // 0 = autodetect default API
+	int apiID = cv::CAP_DSHOW;      
 	// open selected camera using selected API
 	cap.open(deviceID, apiID);
 	// check if we succeeded
@@ -127,13 +131,14 @@ int main(int, char**)
 	// SECTION HOLDING ALL THE VARIABLES
 
 	// GUI flags
-	bool gui_showArea = false; 
-	bool gui_showFeatures = false;
+	bool gui_showTrainingArea = true; // show training area (enable with 1) 
+	bool gui_showAllCamFeatures = false; // show all features tracked on the camera (enable with 2)
+	bool gui_showMatchedFeatures = false; // show all the matched features (enable with 3)
 
 	// Image of the live camera frame
 	Mat img_liveframe;
 	// Image that will show the matches between the camera and the training imag
-	Mat img_matches;
+	Mat img_final;
 
 	// Features will be detected using this
 	Ptr<SIFT> siftdetector = SIFT::create();
@@ -184,17 +189,22 @@ int main(int, char**)
 	}
 
 
+	// whether we have any training data
+	bool haveTrained = false;
+	cv::Mat img_training;
 
+
+	/***
 	// LOAD THE DEFAULT TRAINING IMAGE FROM FILE
 	// this can be changed at runtime from the live camera
 
 	String filename1 = "..\\..\\_RawImages\\box.png";
 
-	cv::Mat img1 = cv::imread(filename1, cv::IMREAD_GRAYSCALE); //Load as grayscale
-	assert(!img1.empty());
+	cv::Mat img_training = cv::imread(filename1, cv::IMREAD_GRAYSCALE); //Load as grayscale
+	assert(!img_training.empty());
 
-	processNewTrainingImage(img1, siftdetector, fkeypoints_train, fdescriptors_train);
-
+	processNewTrainingImage(img_training, siftdetector, fkeypoints_train, fdescriptors_train);
+	****/
 	
 
 
@@ -213,6 +223,7 @@ int main(int, char**)
 			cerr << "ERROR! blank frame grabbed\n";
 			break;
 		}
+		flip(img_liveframe, img_liveframe, 1);
 
 
 		// KEYBOARD CONTROLS
@@ -221,23 +232,37 @@ int main(int, char**)
 
 		// '1' - show the area where we will be training from
 		if (c == '1') {
-			gui_showArea = !gui_showArea;
+			gui_showTrainingArea = !gui_showTrainingArea;
 		}
-		if (gui_showArea) train_drawArea(img_liveframe, trainingArea, Scalar(0, 255, 0));;
+		if (gui_showTrainingArea) train_drawArea(img_liveframe, trainingArea, Scalar(0, 255, 0));;
+
+
+		// '2' - show all the features in the camera image
+		if (c == '2') {
+			gui_showAllCamFeatures = !gui_showAllCamFeatures;
+		}
+
+		// '3' - show all the features in the camera image
+		if (c == '3') {
+			gui_showMatchedFeatures = !gui_showMatchedFeatures;
+		}
 
 		// ' ' - trigger training of new dataset from that area
 		if (c == ' ') {
 			train_drawArea(img_liveframe, trainingArea, Scalar(255, 0, 0));
 
-			Mat ni = img_liveframe(trainingArea);
-			cvtColor(ni, img1, COLOR_RGB2GRAY);
+			Mat imgCroppedCamera = img_liveframe(trainingArea);
+			cvtColor(imgCroppedCamera, img_training, COLOR_RGB2GRAY);
 			
-			processNewTrainingImage(img1, siftdetector, fkeypoints_train, fdescriptors_train);
+			processNewTrainingImage(img_training, siftdetector, fkeypoints_train, fdescriptors_train);
 
+			haveTrained = true;
+			// turn off training area
+			gui_showTrainingArea = false;
 		}
 
-		// show live and wait for a key with timeout long enough to show images
-		imshow("Live", img_liveframe);
+		// show live , will be a bit later
+		//imshow("Live", img_liveframe);
 
 
 
@@ -245,25 +270,39 @@ int main(int, char**)
 
 		// NOW DO AR BASED ON THE TRAINING DATA VS. THE CAMERA IMAGE
 
-
+		
 
 		// 
 		// ===== DETECT FEATURES IN THE CAMERA FRAME ======= using SIFT
 		// 
 		siftdetector->detectAndCompute(img_liveframe, noArray(), fkeypoints_cam, fdescriptors_cam);
 
-		// show keypoints
-		if (false) {
+		// show all the features found in the camera frame, regardless of whether they're in the training or not
+		if (gui_showAllCamFeatures) {
 			cv::Mat output;
-			cv::drawKeypoints(img_liveframe, fkeypoints_cam, output);//, cv::Scalar::all(-1), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-			imshow("output", output);
+			cv::drawKeypoints(img_liveframe, fkeypoints_cam, img_liveframe);//, cv::Scalar::all(-1), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+			//imshow("All features in camera", output);
 		}
+
+		// show live 
+		if (!haveTrained) {
+			putText(img_liveframe, "Place an image in the training area and push SPACE to train", 
+				Point(50, 50), FONT_HERSHEY_SIMPLEX, 0.4, 0);
+		}
+		else {
+			putText(img_liveframe, "KEYS: 1=Train Area; SPACE=Train;   2=Features; 3=Matches",
+				Point(50, 50), FONT_HERSHEY_SIMPLEX, 0.4, 0);
+		}
+		imshow("Live", img_liveframe);
 
 
 
 		//
 		// ===== MATCHING THE FEATURES ======= with knn, and filtering
 		//
+
+		// if we didn't train any tracking image, then can't do anything now. 
+		if (!haveTrained) continue;
 
 
 		knn_matches.clear();
@@ -288,18 +327,40 @@ int main(int, char**)
 
 
 			// SHOW the matches in the two images
-			if (gui_showFeatures) {
+			if (gui_showMatchedFeatures) {
+
+				// draw matches on the liveframe and output to img_final
 				drawMatches(img_liveframe, fkeypoints_cam,
-					img1, fkeypoints_train,
+					img_training, fkeypoints_train,
 					topMatches,
-					img_matches, 
+					img_final, 
 					Scalar::all(255),
 					Scalar::all(255), std::vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
 
-				if (false) imshow("Good Matches", img_matches);
+				putText(img_final, "TRAINING IMAGE",
+					Point(img_liveframe.cols + 10, 15), FONT_HERSHEY_SIMPLEX, 0.4, Scalar(255,255,255));
+
+				//imshow("Features Matched between Live and Training image", img_matches);
+
+
+				// do some extra stats on the matching
+				int num_good_matches = topMatches.size();
+				float avg_matchDist = 0;
+				for (size_t i = 0; i < num_good_matches; i++)
+				{
+					avg_matchDist += topMatches[i].distance;
+				}
+				avg_matchDist /= num_good_matches;
+
+				
+				cout << String("Matching stats. Num good = ") << num_good_matches << "\t  Avg = " << avg_matchDist
+					<< endl;
+
+				
 			}
 			else {
-				img_matches = img_liveframe;
+				// we'll just use the live image to build the img_final
+				img_final = img_liveframe;
 			}
 
 			// checkpoint to make sure we have enough match between the two images
@@ -332,12 +393,12 @@ int main(int, char**)
 			// calculate where the 3d cube vertices will be in the camera image space
 			cv::projectPoints(cube3dpoints, rvec, tvec, cam_cameramatrix, cam_distortioncoefficients, projectedPoints);
 			// draw circles where the cube vertices are in the camera space
-			cv::circle(img_matches, projectedPoints[0], 5, (255, 0, 0), 3);
+			cv::circle(img_final, projectedPoints[0], 5, (255, 0, 0), 3);
 			// and draw the cube edges
-			drawCube(projectedPoints, img_matches);
+			drawCube(projectedPoints, img_final);
 			
 
-			imshow("Final", img_matches);
+			imshow("Final", img_final);
 	}
 	// the camera will be deinitialized automatically in VideoCapture destructor
 	return 0;
