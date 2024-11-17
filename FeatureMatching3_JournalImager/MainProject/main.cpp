@@ -37,7 +37,7 @@ Author: Iulian Radu 2024
 #include <iostream>
 #include <string>
 #include <fstream>
-
+#include <chrono>
 
 using namespace cv;
 using namespace std;
@@ -89,6 +89,14 @@ void train_drawArea(Mat frame, Rect trainingArea, Scalar color) {
 	cv::rectangle(frame, trainingArea, color);
 }
 
+long getTimeMS() {
+	using namespace std::chrono;
+	milliseconds ms = duration_cast<milliseconds>(
+		system_clock::now().time_since_epoch()
+		);
+	return ms.count();
+}
+
 // Given a new image frame, detects SIFT features on the image
 void processNewTrainingImage(Mat img1, Ptr<SIFT>& siftdetector, std::vector<cv::KeyPoint>& keypoints1, Mat& descriptors1) {
 	keypoints1.clear();
@@ -110,6 +118,7 @@ int main(int, char**)
 	//cout << cam_cameramatrix;
 	fs.release();
 
+	/***
 	// OPEN LIVE CAMERA 
 
 	VideoCapture cap;
@@ -126,7 +135,12 @@ int main(int, char**)
 		return -1;
 	}
 
-
+	****/
+	VideoCapture cap("..\\videos\\journaltest1.mp4");
+	if (!cap.isOpened()) {
+		cerr << "ERROR! Unable to open video file\n";
+		return -1;
+	}
 
 	// SECTION HOLDING ALL THE VARIABLES
 
@@ -182,7 +196,7 @@ int main(int, char**)
 	// area of the camera image used for training the new dataset
 	Rect trainingArea;
 	{
-		int pad = 50, width = 300, height = 300;
+		int pad = 50, width = 700, height = 500;
 		int x1 = pad, x2 = pad + width;
 		int y1 = pad, y2 = pad + height;
 		trainingArea = Rect(x1, y1, x2, y2);
@@ -194,36 +208,42 @@ int main(int, char**)
 	cv::Mat img_training;
 
 
-	/***
-	// LOAD THE DEFAULT TRAINING IMAGE FROM FILE
-	// this can be changed at runtime from the live camera
-
-	String filename1 = "..\\..\\_RawImages\\box.png";
-
-	cv::Mat img_training = cv::imread(filename1, cv::IMREAD_GRAYSCALE); //Load as grayscale
-	assert(!img_training.empty());
-
-	processNewTrainingImage(img_training, siftdetector, fkeypoints_train, fdescriptors_train);
-	****/
-	
-
 
 
 	// MAIN LOOP
+
+	long startTime = getTimeMS();
+	int lastNumMatchedFeatures = 0;
 
 	cout << "Starting grabbing frames" << endl
 		<< "Press any key to terminate" << endl;
 	for (;;)
 	{
+		// get new video frame
 		
-		// wait for a new frame from camera and store it into 'frame'
+		float SPEEDSCALE = 0.15;
+		long msecsNow = SPEEDSCALE * (getTimeMS() - startTime);
+		//cout << secsNow/1000.0f << endl;
+		cap.set(cv::CAP_PROP_POS_MSEC, msecsNow);
+
+		//cap.set(CV_CAP_PROP_POS_MSEC, )
 		cap.read(img_liveframe);
+
 		// check if we succeeded
 		if (img_liveframe.empty()) {
 			cerr << "ERROR! blank frame grabbed\n";
 			break;
 		}
-		flip(img_liveframe, img_liveframe, 1);
+
+		// resize the image to a fixed size ?
+		if (true) {
+			int down_width = 1024;
+			int down_height = 768;
+			
+			//resize down
+			resize(img_liveframe, img_liveframe, Size(down_width, down_height), INTER_LINEAR);
+		}
+		//flip(img_liveframe, img_liveframe, 1);
 
 
 		// KEYBOARD CONTROLS
@@ -293,17 +313,18 @@ int main(int, char**)
 			putText(img_liveframe, "KEYS: 1=Train Area; SPACE=Train;   2=Features; 3=Matches",
 				Point(50, 50), FONT_HERSHEY_SIMPLEX, 0.4, 0);
 		}
+		
 		imshow("Live", img_liveframe);
-
-
 
 		//
 		// ===== MATCHING THE FEATURES ======= with knn, and filtering
 		//
 
 		// if we didn't train any tracking image, then can't do anything now. 
-		if (!haveTrained) continue;
-
+		if (!haveTrained)
+		{
+			continue;
+		}
 
 		knn_matches.clear();
 
@@ -326,6 +347,9 @@ int main(int, char**)
 			}
 
 
+
+			
+
 			// SHOW the matches in the two images
 			if (gui_showMatchedFeatures) {
 
@@ -342,20 +366,6 @@ int main(int, char**)
 
 				//imshow("Features Matched between Live and Training image", img_matches);
 
-
-				// do some extra stats on the matching
-				int num_good_matches = topMatches.size();
-				float avg_matchDist = 0;
-				for (size_t i = 0; i < num_good_matches; i++)
-				{
-					avg_matchDist += topMatches[i].distance;
-				}
-				avg_matchDist /= num_good_matches;
-
-				
-				cout << String("Matching stats. Num good = ") << num_good_matches << "\t  Avg = " << avg_matchDist
-					<< endl;
-
 				
 			}
 			else {
@@ -363,11 +373,68 @@ int main(int, char**)
 				img_final = img_liveframe;
 			}
 
+
+
+
+
+
+
 			// checkpoint to make sure we have enough match between the two images
-			const int MINPOINTS = 20;
-			if (matchedpoints_cam.size() < MINPOINTS) continue;
+
+			// DO SOME STATS ON THE MATCHES
+			int num_good_matches = topMatches.size();
+			if (true) {
+				// do some extra stats on the matching
+				float avg_matchDist = 0;
+				for (size_t i = 0; i < num_good_matches; i++)
+				{
+					avg_matchDist += topMatches[i].distance;
+				}
+				avg_matchDist /= num_good_matches;
+
+				int deltaM = (lastNumMatchedFeatures - num_good_matches);
+				float deltaMP = (lastNumMatchedFeatures - num_good_matches) * 100.0f / num_good_matches;
+
+				cout << String("Matching: Good = ") << num_good_matches << "\t  Avg = " << avg_matchDist 
+					<< "\t  Delta = " << deltaM
+					<< "\t  DeltaPERC = " << deltaMP
+					<< endl;
+
+				if (abs(deltaMP) > 30) {
+					cout << "**** LARGE ****" << endl;
+				}
+			}
+
+			bool skipBecauseLowMatch = false;
+			const int MINPOINTS = 100;
+			if (false && num_good_matches /*matchedpoints_cam.size()*/ < MINPOINTS) {
+
+				// retrain the image
+				train_drawArea(img_liveframe, trainingArea, Scalar(255, 0, 0));
+				Mat imgCroppedCamera = img_liveframe(trainingArea);
+				cvtColor(imgCroppedCamera, img_training, COLOR_RGB2GRAY);
+				processNewTrainingImage(img_training, siftdetector, fkeypoints_train, fdescriptors_train);
+				gui_showTrainingArea = false;
+				cout << "** RE-TRAINED **" << endl;
+				imshow("Live", img_liveframe);
+
+				skipBecauseLowMatch = true; // skip because too low
+			}
+
+			if (false && num_good_matches /**matchedpoints_cam.size()*/ > 200 && lastNumMatchedFeatures < 200) {
+				// this one is good for a screenshot
+				cout << "****** [[ GOOD ONE ]] ******" << endl;
+			}
+
+
+
+			lastNumMatchedFeatures = topMatches.size();//matchedpoints_cam.size();
+
+			if (skipBecauseLowMatch) continue;
 
 			
+			/****
+			* 
 			//
 			// ===== POSE FINDING ======= with solvePnP
 			//
@@ -399,6 +466,10 @@ int main(int, char**)
 			
 
 			imshow("Final", img_final);
+			***/
+
+
+			
 	}
 	// the camera will be deinitialized automatically in VideoCapture destructor
 	return 0;

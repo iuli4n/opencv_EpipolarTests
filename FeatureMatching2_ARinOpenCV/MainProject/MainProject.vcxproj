@@ -24,7 +24,7 @@
     <ProjectGuid>{0ebe2f76-3bc0-4212-bb8e-ff02c3f21ac9}</ProjectGuid>
     <RootNamespace>MainProject</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <ProjectName>FeatureMatching2_AR</ProjectName>
+    <ProjectName>FeatureMatching2_ARinOpenCV</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
